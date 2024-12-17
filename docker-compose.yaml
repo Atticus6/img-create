@@ -1,0 +1,12 @@
+version: "3.3"
+services:
+  node-img:
+    image: "node:latest"
+    container_name: blog
+    restart: unless-stopped
+    volumes:
+      - ./:/app
+    working_dir: /app
+    ports:
+      - "19000:19000"
+    command: node app.js
