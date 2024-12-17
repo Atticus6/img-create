@@ -2,9 +2,10 @@ const express = require('express');
 const cors = require('cors');  // 添加这行
 const puppeteer = require('puppeteer');
 const path = require('path');
+const moment = require('moment-timezone');
 
 const app = express();
-const port = 19000;
+const port = 10086;
 
 // 使用 cors 中间件
 app.use(cors());
@@ -19,14 +20,14 @@ app.get('/small/test', (req, res) => {
   console.log('收到 /small/test 请求');
   // 返回结果
   res.json({
-    data:"大傻逼"
+    data:"测试一下接口子"
   });
 });
 
 app.post('/small/api/generate-receipt', async (req, res) => {
     let browser = null;
     try {
-      const { data, purchaseType, datas, payStatus, orderStatus, name, takeawayInfo, order, orderItemProducts, orderItemDelivery, orderPayRecord } = req.body;
+      const { data, purchaseType, datas, payStatus, orderStatus, name, takeawayInfo, order, orderItemProducts, orderItemDelivery, orderPayRecord, purchaseCard } = req.body;
       // 启动浏览器
       browser = await puppeteer.launch({
         headless: true,
@@ -47,7 +48,7 @@ app.post('/small/api/generate-receipt', async (req, res) => {
           htmlContent = generateMemberCardHtml(data, datas, payStatus, name);
           break;
         case 2: // 充值
-          htmlContent = generateRechargeCardHtml(data, datas, payStatus, name);
+          htmlContent = generateRechargeCardHtml(data, datas, payStatus, name, purchaseCard);
           break;
         case 3: // 补打
           htmlContent = buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name);
@@ -72,7 +73,7 @@ app.post('/small/api/generate-receipt', async (req, res) => {
   
       // 设置视口
       await page.setViewport({
-        width: 300,
+        width: 270,
         height: height,
         deviceScaleFactor: 5 // 设置设备缩放因子以提高清晰度
       });
@@ -89,9 +90,13 @@ app.post('/small/api/generate-receipt', async (req, res) => {
       
       // 返回结果
       res.json({
-        base64: screenshot,
-        width: 380,
-        height: height * 1.5
+        code: '000000',
+        data:{
+          base64: screenshot,
+          width: 360,
+          height: height * 1.5
+        },
+        msg: '请求成功'
       });
   
     } catch (error) {
@@ -111,7 +116,7 @@ app.post('/small/api/generate-receipt', async (req, res) => {
 
   
 // 补打
-function buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name) {
+function buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name, orderStatus) {
   // 构建 HTML 内容
   return `
     <!DOCTYPE html>
@@ -128,7 +133,7 @@ function buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name)
         .render-content {
           padding: 10px;
           box-sizing: border-box;
-          width: 380px;
+          width: 270px;
           min-height: 420px;
           padding-bottom: 50px;
           border: 1px solid #f0f0f0;
@@ -136,6 +141,24 @@ function buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name)
         .divider {
           border-top: 1px dashed #000;
           margin: 10rpx 0;
+        }
+        .dividers {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          font-size: 14px;
+          color: #333;
+          line-height: 20px;
+          padding: 0;
+          margin: 0;
+        }
+        .dividers::before,
+        .dividers::after {
+          content: '';
+          flex: 1;
+          border-top: 1px solid #000;
+          margin: 0 10px; /* 控制横线与文字的间距 */
         }
         .render-content h4 {
           line-height: 25px;
@@ -208,7 +231,7 @@ function buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name)
           align-items: center;
         }
         .tip {
-          margin-top: 10px;
+          margin: 10px 0;
           font-size: 14px;
         }
       </style>
@@ -230,17 +253,20 @@ function buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name)
                 ${order?.secondCategoryName || ''}
               `}
             </div>
-            <div>补打时间：${new Date().toLocaleString()}</div>
+            <div>补打时间：${formatDates(new Date())}</div>
           </div>
-          <div class="divider"></div>
+          <div class="dividers">
+            ${order?.receiveType == 0
+              ? (order?.firstCategory === 2 ? '到店' : '堂食')
+              : (order?.firstCategory === 2 ? '上门' : '外送')
+            }
+          </div>
           <div class="food">
             ${orderItemProducts.map(item => `
               <div class="lists">
                 <div class="tit">
                   <div class="biaoti">${item.productName}</div>
-                  ${item.productSpecs.map(spec => `
-                    <div class="remark">${spec.specName}</div>
-                  `).join('')}
+                  <div class="remark">${item.productSpecs.map(spec =>spec.specName).join(',')}</div>
                 </div>
                 <div class="flex">
                   <div class="money">
@@ -249,11 +275,11 @@ function buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name)
                   </div>
                   <div class="price">
                     <div style="font-size: 13px; text-align: right">
-                      ￥${(item.originalPrice || 0).toFixed(2)}
+                      ${formatUnitPriceh(item.originalPrice)}
                     </div>
                     ${item.promotionValue != null ? `
                       <div style="font-size: 13px; text-align: right">
-                        -￥${Math.abs(item.discountPrice).toFixed(2)}
+                        -${formatUnitPriceh(Math.abs(item.discountPrice))}
                       </div>
                     ` : ''}
                   </div>
@@ -266,36 +292,44 @@ function buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name)
             <div class="flex justify-between">
               <div style="font-size: 14px">总价</div>
               <div style="font-size: 14px">
-                ￥${(order?.totalOriginalAmount || 0).toFixed(2)}
+                ${formatUnitPriceh(order?.totalOriginalAmount)}
               </div>
             </div>
             <div class="flex justify-between">
               <div style="font-size: 14px">折扣</div>
               <div style="font-size: 14px">
-                ${order?.totalDiscount == null || order?.totalDiscount == 0 ? '-' : `-￥${Math.abs(order?.totalDiscount).toFixed(2)}`}
+                ${order?.totalDiscount == null || order?.totalDiscount == 0 ? '-' : `-${formatUnitPriceh(Math.abs(order?.totalDiscount))}`}
               </div>
             </div>
             <div class="flex justify-between">
               <div style="font-size: 14px">抹零</div>
               <div style="font-size: 14px">
-                ${order?.roundDownMoney == null || order?.roundDownMoney == 0 ? '-' : `-￥${Math.abs(order?.roundDownMoney).toFixed(2)}`}
+                ${order?.roundDownMoney == null || order?.roundDownMoney == 0 ? '-' : `-${formatUnitPriceh(Math.abs(order?.roundDownMoney))}`}
               </div>
             </div>
           </div>
           <div class="divider"></div>
           <div class="heji">
-            合计：￥${(order?.totalAmount || 0).toFixed(2)}
+            合计：${formatUnitPriceh(order?.totalAmount || 0)}
           </div>
           <div class="tip" style="display: ${order?.payMethodName != null ? 'block' : 'none'};">
             <div class="divider"></div>
-            <div>
+            <div style="padding: 10px 0 5px 0; box-sizing: border-box;">
               ${orderPayRecord?.memberCardPayInfos != null && order?.payMethodName == '充值卡' ? `
                 ${orderPayRecord.memberCardPayInfos.map(item => `
-                  <div>${item.cardCategoryName}付款：￥${formatUnitPriceh(item.payMoney)}</div>
+                  <div style="display: ${item.payMoney <= 0 || item.payMoney == null ? 'block' : 'none'};">${item.cardCategoryName}付款：${formatUnitPriceh(item.payMoney)}</div>
                 `).join('')}
               ` : ''}
+              ${orderPayRecord?.memberCardPayInfos != null && order?.payMethodName != '充值卡' ? `
+                ${orderPayRecord.memberCardPayInfos.map(item => `
+                  <div style="display: ${item.payMoney <= 0 || item.payMoney == null ? 'block' : 'none'};">${item.cardCategoryName}付款</div>
+                `).join('')}
+                ` : ''}
               ${orderPayRecord?.memberCardPayInfos == null && order?.payMethodName != '扫码付款' ? `
-                ${order?.payMethodName}付款：￥${formatUnitPriceh(order?.totalAmount)}
+                ${order?.payMethodName}付款：${formatUnitPriceh(order?.totalAmount)}
+              ` : ''}
+              ${orderPayRecord?.memberCardPayInfos == null && order?.payMethodName == '扫码付款' ? `
+                ${order?.payMethodName}：${formatUnitPriceh(order?.totalAmount)}
               ` : ''}
             </div>
           </div>
@@ -310,7 +344,7 @@ function buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name)
           <div style="display: ${order?.orderPayStatus == 0 ? 'block' : 'none'};">
             <div class="divider"></div>
             <div style="font-weight: 800">
-              待收款：￥${formatUnitPriceh(order?.totalAmount)}
+              待收款：${formatUnitPriceh(order?.totalAmount)}
             </div>
           </div>
         </div>
@@ -336,7 +370,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
           .render-content {
             padding: 10px;
             box-sizing: border-box;
-            width: 380px;
+            width: 270px;
             min-height: 420px;
             padding-bottom: 50px;
             border: 1px solid #f0f0f0;
@@ -436,9 +470,10 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
           .vip, .personal {
             font-size: 14px;
             line-height: 1.5;
+            margin-top: 5px;
           }
           .tip{
-            margin-top: 10px;
+            margin: 10px 0;
             font-size: 14px;
           }
         </style>
@@ -453,7 +488,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
             <div>下单时间：${datas.orderCreateTime || ''}</div>
             <div>
               ${orderStatus.firstCategory === 2 ? '服务' : '用餐'}时间：
-              ${formatDate(addDays(new Date(), data.appointmentDate)) || formatDate(addDays(new Date(), datas.orderCreateTime)) || ''}
+              ${formatDate(data.appointmentDate) || formatDate(datas.orderCreateTime) || ''}
               ${orderStatus.meals?.name || ''}
             </div>
           </div>
@@ -483,11 +518,11 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
                   </div>
                   <div class="price">
                     <div style="font-size: 13px; text-align: right">
-                      ￥${(item.unitPrice || 0).toFixed(2)}
+                      ${formatUnitPriceh(Math.abs(item.unitPrice))}
                     </div>
                     ${item.promotionAmount ? `
                       <div style="font-size: 13px; text-align: right">
-                        -￥${Math.abs(item.promotionAmount).toFixed(2)}
+                        -${formatUnitPriceh(Math.abs(item.promotionAmount))}
                       </div>
                     ` : ''}
                   </div>
@@ -502,14 +537,14 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
             <div class="flex justify-between">
               <div style="font-size: 13px">总价</div>
               <div style="font-size: 13px">
-                ￥${(data.totalOriginalAmount || 0).toFixed(2)}
+                ${formatUnitPriceh(data.totalOriginalAmount)}
               </div>
             </div>
             <div class="flex justify-between">
               <div style="font-size: 13px">折扣</div>
               <div style="font-size: 13px">
                 ${data.totalPromotionAmount ? 
-                  `-￥${Math.abs(data.totalPromotionAmount).toFixed(2)}` : 
+                  `-${formatUnitPriceh(Math.abs(data.totalPromotionAmount))}` : 
                   '-'
                 }
               </div>
@@ -518,7 +553,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
               <div style="font-size: 13px">抹零</div>
               <div style="font-size: 13px">
                 ${data.roundDownAmount ? 
-                  `-￥${Math.abs(data.roundDownAmount).toFixed(2)}` : 
+                  `-${formatUnitPriceh(Math.abs(data.roundDownAmount))}` : 
                   '-'
                 }
               </div>
@@ -528,7 +563,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
           <div class="divider"></div>
   
           <div class="heji">
-            合计：￥${(data.totalAmount || 0).toFixed(2)}
+            合计：${formatUnitPriceh(data.totalAmount || 0)}
           </div>
   
           ${datas.payedCard ? `
@@ -540,13 +575,13 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
                   <div>${datas.payedCard[0].cardCategoryName}剩余：${datas.payedCard[0].countBalance}次</div>
                 ` : ''}
                 ${datas.payedCard[0].memberCateType === 2 ? `
-                  <div>${datas.payedCard[0].cardCategoryName}到期时间：${datas.payedCard[0].endDate}</div>
+                  <div>${datas.payedCard[0].cardCategoryName}到期：${datas.payedCard[0].endDate}</div>
                 ` : ''}
               ` : ''}
               ${datas.payedCard[0].memberCateType === 1 || datas.payedCard[0].memberCateType === 0 ? 
                 datas.payedCard.map(card => `
-                  <div>${card.cardCategoryName}付款：￥${(card.payBalance || 0).toFixed(2)}</div>
-                  <div>${card.cardCategoryName}余额：￥${(card.moneyBalance || 0).toFixed(2)}</div>
+                  <div>${card.cardCategoryName}付款：${formatUnitPriceh(card.payBalance)}</div>
+                  <div>${card.cardCategoryName}余额：${formatUnitPriceh(card.moneyBalance)}</div>
                 `).join('') : ''
               }
             </div>
@@ -563,8 +598,8 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
   
           ${!datas.payMethod ? `
             <div class="divider"></div>
-            <div style="font-weight: 800; font-size: 14px; text-align: right;">
-              待收款：￥${(data.totalAmount || 0).toFixed(2)}
+            <div style="font-weight: 800; font-size: 14px; text-align: left; margin-top: 10px;">
+              待收款：${formatUnitPriceh(data.totalAmount)}
             </div>
           ` : ''}
   
@@ -572,7 +607,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
             <div class="divider"></div>
             <div class="tip">
               ${payLabel(payStatus.payMethodValue, orderStatus.firstCategory)}付款：
-              ￥${(data.totalAmount || 0).toFixed(2)}
+              ${formatUnitPriceh(data.totalAmount)}
             </div>
           ` : ''}
         </div>
@@ -583,7 +618,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
   }
 
 //   充值
-  function generateRechargeCardHtml(data, datas, payStatus, name) {
+  function generateRechargeCardHtml(data, datas, payStatus, name, purchaseCard) {
     return `
       <!DOCTYPE html>
       <html>
@@ -624,7 +659,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
           .order .list {
             font-size: 14px;
             color: #333;
-            line-height: 30px;
+            line-height: 20px;
           }
           .heji {
             font-size: 16px;
@@ -637,7 +672,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
             justify-content: space-between;
           }
           .tip{
-            margin-top: 10px;
+            margin: 10px 0;
           }
         </style>
       </head>
@@ -648,27 +683,30 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
           <div class="order">
             <div class="list">
               <div>交易流水：${datas.orderCode || ''}</div>
-              <div>交易时间：${datas.orderCreateTime || ''}</div>
+              <div>交易时间：${formatDate(datas.orderCreateTime) || ''}</div>
               
-              ${data.purchaseCard?.cardNumber ? `
-                <div>充值卡号：${cardNo(data.purchaseCard.cardNumber)}</div>
+              ${purchaseCard?.cardNumber ? `
+                <div>充值卡号：${cardNo(purchaseCard.cardNumber)}</div>
               ` : ''}
               
-              <div>充值金额：￥${(data.purchaseCard?.rechargeAmount || 0).toFixed(2)}</div>
+              <div>充值金额：${formatUnitPriceh(data.purchaseCard?.rechargeAmount)}</div>
               
               ${data.purchaseCard?.giveAmount && data.purchaseCard.giveAmount != 0 ? `
-                <div>赠送金额：￥${(data.purchaseCard.giveAmount).toFixed(2)}</div>
+                <div>赠送金额：${formatUnitPriceh(data.purchaseCard.giveAmount)}</div>
               ` : ''}
               
               <div>
-                充值前余额：￥${(data.purchaseCard?.price || 0).toFixed(2)}
+                充值前余额：${formatUnitPriceh(purchaseCard?.moneyBalance
+                  ? purchaseCard?.moneyBalance
+                  : 0)}
               </div>
               
               <div>
-                充值后余额：￥${(
-                  (data.purchaseCard?.price || 0) + 
-                  (data.purchaseCard?.rechargeAmount || 0)
-                ).toFixed(2)}
+                充值后余额：${formatUnitPriceh(
+                  (purchaseCard?.moneyBalance
+                    ? purchaseCard?.moneyBalance
+                    : 0.0) + data?.purchaseCard?.rechargeAmount
+                )}
               </div>
             </div>
   
@@ -677,7 +715,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
             ${payStatus.payMethodValue ? `
               <div class="tip">
                 ${payLabel(payStatus.payMethodValue)}付款：
-                ￥${(data.totalAmount || 0).toFixed(2)}
+                ${formatUnitPriceh(data.totalAmount)}
               </div>
             ` : ''}
           </div>
@@ -741,7 +779,7 @@ function generateMemberCardHtml(data, datas, payStatus, name) {
             justify-content: space-between;
           }
           .tip{
-            margin-top: 10px;
+            margin: 10px 0;
           }
         </style>
       </head>
@@ -769,7 +807,7 @@ function generateMemberCardHtml(data, datas, payStatus, name) {
                 <div>购卡金额：￥${(data.purchaseCard.price || 0).toFixed(2)}</div>
                 <div>有效天数：${data.purchaseCard.validDays || 0}</div>
                 <div>开卡日期：${formatDate(new Date())}</div>
-                <div>有效日期：${formatDate(addDays(new Date(), data.purchaseCard.validDays))}</div>
+                <div>有效日期：${formatDate(data.purchaseCard.validDays)}</div>
               ` : ''}
               
               ${data.purchaseCard?.memberCateType === 3 ? `
@@ -784,10 +822,10 @@ function generateMemberCardHtml(data, datas, payStatus, name) {
                   <div>服务项目：${data.purchaseCard.productName}</div>
                 ` : ''}
                 
-                <div>购卡金额：￥${(data.purchaseCard.price || 0).toFixed(2)}</div>
+                <div>购卡金额：${formatUnitPriceh(data.purchaseCard.price)}</div>
                 <div>次数：${data.purchaseCard.originalBalance || 0}</div>
                 <div>开卡日期：${formatDate(new Date())}</div>
-                <div>有效日期：${formatDate(addDays(new Date(), data.purchaseCard.validDays))}</div>
+                <div>有效日期：${formatDate(data.purchaseCard.validDays)}</div>
               ` : ''}
             </div>
   
@@ -796,7 +834,7 @@ function generateMemberCardHtml(data, datas, payStatus, name) {
             ${payStatus.payMethodValue ? `
               <div class="tip">
                 ${payLabel(payStatus.payMethodValue)}付款：
-                ￥${(data.totalAmount || 0).toFixed(2)}
+                ${formatUnitPriceh(data.totalAmount || 0)}
               </div>
             ` : ''}
           </div>
@@ -806,15 +844,30 @@ function generateMemberCardHtml(data, datas, payStatus, name) {
     `;
   }
 
-  // 辅助函数：脱敏卡号
   function cardNo(cardNumber) {
-    if (!cardNumber) return '';
-    return cardNumber.slice(0, 4) + '****' + cardNumber.slice(-4);
+    console.log('Input:', cardNumber);
+    if (!cardNumber && cardNumber !== 0) {
+      return '';
+    }
+    const cardStr = cardNumber.toString().trim();
+    console.log('Card String:', cardStr);
+    const firstChar = cardStr?.[0] ?? '';
+    const lastChar = cardStr?.[cardStr.length - 1] ?? '';
+    const middleLength = cardStr.length - 2;
+    const middleChars = middleLength ? '*'.repeat(middleLength) : '****';
+    console.log('Middle Length:', middleLength);
+    console.log('Middle Chars:', middleChars);
+    return `${firstChar}${middleChars}${lastChar}`;
   }
   
   // 辅助函数：日期格式化
   function formatDate(date) {
-    return new Date(date).toISOString().split('T')[0];
+    return new Date(date)?.toISOString()?.split('T')[0];
+  }
+
+  // 辅助函数：日期格式化
+  function formatDates(date) {
+    return moment(date).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss'); // 设置为中国标准时间
   }
 
   function formatUnitPriceh(data){
