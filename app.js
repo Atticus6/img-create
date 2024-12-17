@@ -487,8 +487,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
             <div>交易流水：${datas.orderCode || ''}</div>
             <div>下单时间：${datas.orderCreateTime || ''}</div>
             <div>
-              ${orderStatus.firstCategory === 2 ? '服务' : '用餐'}时间：
-              ${formatDate(data.appointmentDate) || formatDate(datas.orderCreateTime) || ''}
+              ${orderStatus.firstCategory === 2 ? '服务':'用餐'}时间：${formatDateY(data.appointmentDate)||formatDateY(datas.orderCreateTime) || ''}
               ${orderStatus.meals?.name || ''}
             </div>
           </div>
@@ -565,7 +564,15 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
           <div class="heji">
             合计：${formatUnitPriceh(data.totalAmount || 0)}
           </div>
-  
+
+          ${payStatus.payMethodValue ? `
+            <div class="divider"></div>
+            <div class="tip">
+              ${payLabel(payStatus.payMethodValue, orderStatus.firstCategory)}付款：
+              ${formatUnitPriceh(data.totalAmount)}
+            </div>
+          ` : ''}
+
           ${datas.payedCard ? `
             <div class="divider"></div>
             <div class="vip">
@@ -602,14 +609,6 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
               待收款：${formatUnitPriceh(data.totalAmount)}
             </div>
           ` : ''}
-  
-          ${payStatus.payMethodValue ? `
-            <div class="divider"></div>
-            <div class="tip">
-              ${payLabel(payStatus.payMethodValue, orderStatus.firstCategory)}付款：
-              ${formatUnitPriceh(data.totalAmount)}
-            </div>
-          ` : ''}
         </div>
       </div>
       </body>
@@ -634,7 +633,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
           .render-content {
             padding: 10px;
             box-sizing: border-box;
-            width: 380px;
+            width: 270px;
             min-height: 320px;
             padding-bottom: 50px;
             border: 1px solid #f0f0f0;
@@ -683,7 +682,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
           <div class="order">
             <div class="list">
               <div>交易流水：${datas.orderCode || ''}</div>
-              <div>交易时间：${formatDate(datas.orderCreateTime) || ''}</div>
+              <div>交易时间：${(datas.orderCreateTime) || ''}</div>
               
               ${purchaseCard?.cardNumber ? `
                 <div>充值卡号：${cardNo(purchaseCard.cardNumber)}</div>
@@ -742,7 +741,7 @@ function generateMemberCardHtml(data, datas, payStatus, name) {
           .render-content {
             padding: 10px;
             box-sizing: border-box;
-            width: 380px;
+            width: 270px;
             min-height: 320px;
             padding-bottom: 50px;
             border: 1px solid #f0f0f0;
@@ -807,7 +806,7 @@ function generateMemberCardHtml(data, datas, payStatus, name) {
                 <div>购卡金额：￥${(data.purchaseCard.price || 0).toFixed(2)}</div>
                 <div>有效天数：${data.purchaseCard.validDays || 0}</div>
                 <div>开卡日期：${formatDate(new Date())}</div>
-                <div>有效日期：${formatDate(data.purchaseCard.validDays)}</div>
+                <div>有效日期：${formatDay(data.purchaseCard.validDays)}</div>
               ` : ''}
               
               ${data.purchaseCard?.memberCateType === 3 ? `
@@ -825,7 +824,7 @@ function generateMemberCardHtml(data, datas, payStatus, name) {
                 <div>购卡金额：${formatUnitPriceh(data.purchaseCard.price)}</div>
                 <div>次数：${data.purchaseCard.originalBalance || 0}</div>
                 <div>开卡日期：${formatDate(new Date())}</div>
-                <div>有效日期：${formatDate(data.purchaseCard.validDays)}</div>
+                <div>有效日期：${formatDay(data.purchaseCard.validDays)}</div>
               ` : ''}
             </div>
   
@@ -870,6 +869,11 @@ function generateMemberCardHtml(data, datas, payStatus, name) {
     return moment(date).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss'); // 设置为中国标准时间
   }
 
+  // 辅助函数：日期格式化
+  function formatDateY(date) {
+    return date?.slice(0, 10); // 设置为中国标准时间
+  }
+
   function formatUnitPriceh(data){
     return `￥${formatUnitPrice(Math.abs(data))}`
   }
@@ -891,6 +895,20 @@ function generateMemberCardHtml(data, datas, payStatus, name) {
     } else {
       return numStr
     }
+  }
+
+  function formatDay(item) {
+    // 获取当前日期
+    const currentDate = new Date();
+    // 添加 item 天
+    currentDate.setDate(currentDate.getDate() + item);
+    // 减去 1 天
+    currentDate.setDate(currentDate.getDate() - 1);
+    // 格式化为 YYYY-MM-DD
+    const year = currentDate.getFullYear();
+    const month = String(currentDate.getMonth() + 1).padStart(2, '0'); // 月份从 0 开始
+    const day = String(currentDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   function strictRound(value, decimalPlaces= 2){
