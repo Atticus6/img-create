@@ -1,8 +1,8 @@
 version: "3.3"
 services:
   node-img:
-    image: "img-craete:0.1"
-    container_name: blog
+    image: "ghcr.io/atticus6/img-create-master:latest"
+    container_name: img-create-master-container
     restart: unless-stopped
     volumes:
       - ./app.js:/app/app.js
