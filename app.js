@@ -197,7 +197,7 @@ function buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name,
         .order .food .lists .tit .remark {
           font-size: 13px;
           color: #333;
-          max-width: 104px;
+          max-width: 124px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -438,7 +438,7 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
           .order .food .lists .tit .remark {
             font-size: 13px;
             color: #333;
-            max-width: 104px;
+            max-width: 124px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
