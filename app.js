@@ -197,6 +197,10 @@ function buda(order, orderItemProducts, orderItemDelivery, orderPayRecord, name,
         .order .food .lists .tit .remark {
           font-size: 13px;
           color: #333;
+          max-width: 104px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         .order .food .lists .flex {
           display: flex;
@@ -434,6 +438,10 @@ function generateNormalOrderHtml(data, datas, payStatus, orderStatus, name, take
           .order .food .lists .tit .remark {
             font-size: 13px;
             color: #333;
+            max-width: 104px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
           .order .food .lists .flex {
             display: flex;
